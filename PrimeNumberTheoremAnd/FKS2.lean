@@ -2,6 +2,8 @@ import PrimeNumberTheoremAnd.SecondaryDefinitions
 import PrimeNumberTheoremAnd.FioriKadiriSwidinsky
 import PrimeNumberTheoremAnd.BKLNW
 import PrimeNumberTheoremAnd.RosserSchoenfeldPrime
+import Mathlib.Analysis.Calculus.DerivativeTest
+import Mathlib.Tactic.NormNum.NatFactorial
 
 blueprint_comment /--
 \section{The implications of FKS2}
@@ -132,6 +134,120 @@ theorem corollary_11 {B C R : ℝ} (hB : B ≥ 1 + C ^ 2 / (16 * R)) :
   $D_+(x) := e^{-x^2} \int_0^x e^{t^2}\ dt$. -/)]
 noncomputable def dawson (x : ℝ) : ℝ := exp (-x ^ 2) * ∫ t in 0..x, exp (t ^ 2)
 
+@[simp] lemma dawson_nonneg {x : ℝ} (hx : 0 ≤ x) : 0 ≤ dawson x :=
+  mul_nonneg (by positivity) (intervalIntegral.integral_nonneg hx (by simp [Real.exp_nonneg]))
+
+lemma dawson_neg {x : ℝ} : dawson (-x) = - dawson x := by
+  calc
+    dawson (-x) = exp (-x ^ 2) * ∫ (t : ℝ) in -0..-x, exp (t ^ 2) := by simp [dawson]
+    _ = exp (-x ^ 2) * ∫ (t : ℝ) in x..0, exp (t ^ 2) := by
+      simp [- neg_zero, ← intervalIntegral.integral_comp_neg]
+    _ = _ := by rw [intervalIntegral.integral_symm, dawson]; simp
+
+@[simp] lemma dawson_zero : dawson 0 = 0 := by
+  have := dawson_neg (x := 0)
+  grind
+
+@[simp] lemma dawson_pos {x : ℝ} (hx : 0 < x) : 0 < dawson x := by
+  apply mul_pos (exp_pos _)
+  apply intervalIntegral.integral_pos hx (by fun_prop) (by simp [exp_nonneg])
+  simp only [Set.mem_Icc, exp_pos, and_true]
+  exact ⟨0, by simp [hx.le]⟩
+
+lemma hasDerivAt_dawson {x : ℝ} : HasDerivAt dawson (1 - 2 * x * dawson x) x := by
+  have hf₁ : MeasureTheory.StronglyMeasurable (fun x ↦ exp (x ^ 2)) := by measurability
+  have hf₂ : Continuous (fun x ↦ exp (x ^ 2)) := by fun_prop
+  have : HasDerivAt dawson _ x :=
+    (hasDerivAt_pow 2 x).fun_neg.exp.fun_mul (intervalIntegral.integral_hasDerivAt_right
+      (hf₂.intervalIntegrable _ _) hf₁.stronglyMeasurableAtFilter (by fun_prop))
+  convert this using 1
+  rw [dawson, ← exp_add]
+  simp
+  linear_combination
+
+@[fun_prop]
+lemma differentiable_dawson : Differentiable ℝ dawson := fun _ ↦ hasDerivAt_dawson.differentiableAt
+@[fun_prop]
+lemma continuous_dawson : Continuous dawson := differentiable_dawson.continuous
+lemma deriv_dawson_apply {x : ℝ} : deriv dawson x = 1 - 2 * x * dawson x := hasDerivAt_dawson.deriv
+lemma deriv_dawson :
+  deriv dawson = fun x ↦ 1 - 2 * x * dawson x := funext @deriv_dawson_apply
+
+lemma deriv_deriv_dawson_apply' {x : ℝ} :
+    deriv (deriv dawson) x = - 2 * dawson x - 2 * x * deriv dawson x := by
+  simp (disch := fun_prop) [deriv_const_mul (2 : ℝ), deriv_dawson]
+  ring
+
+lemma deriv_deriv_dawson_apply {x : ℝ} :
+    deriv (deriv dawson) x = - 2 * dawson x - 2 * x * (1 - 2 * x * dawson x) := by
+  rw [deriv_deriv_dawson_apply']
+  simp [deriv_dawson]
+
+/--
+Any non-negative local extremum of the dawson function is a local maximum.
+-/
+lemma dawson_isLocalExtr_isLocalMax {x : ℝ} (hx : 0 ≤ x) (h : IsLocalExtr dawson x) :
+    IsLocalMax dawson x := by
+  have hx : deriv dawson x = 0 := h.deriv_eq_zero
+  apply isLocalMax_of_deriv_deriv_neg _ hx (by fun_prop)
+  rw [deriv_deriv_dawson_apply', hx]
+  have : x ≠ 0 := by grind [deriv_dawson_apply]
+  grind [dawson_pos]
+
+lemma dawson_eq_of_deriv_dawson_eq_zero {x : ℝ} (hx : 0 < x) (h : deriv dawson x = 0) :
+    dawson x = (2 * x)⁻¹ := by
+  simp only [deriv_dawson] at h
+  field_simp
+  linear_combination -h
+
+lemma eventuallyEq_of_isMinFilter_of_isMaxFilter {α β : Type*} [PartialOrder β]
+    {l : Filter α} {f : α → β} {x : α}
+    (h₁ : IsMinFilter f l x) (h₂ : IsMaxFilter f l x) :
+    f =ᶠ[l] (fun _ ↦ f x) := by
+  filter_upwards [h₁, h₂] using by grind
+
+lemma deriv_deriv_nonneg_of_isLocalMin {f : ℝ → ℝ} {x₀ : ℝ}
+    (hf : ContinuousAt f x₀) (h : IsLocalMin f x₀) :
+    0 ≤ deriv (deriv f) x₀ := by
+  by_contra!
+  have := isLocalMax_of_deriv_deriv_neg this h.deriv_eq_zero hf
+  have := eventuallyEq_of_isMinFilter_of_isMaxFilter h this
+  have : deriv (deriv f) x₀ = 0 := by simpa using this.deriv.deriv_eq
+  grind
+
+open Topology in
+lemma not_dawson_isLocalMin {x : ℝ} (hx : 0 ≤ x) : ¬ IsLocalMin dawson x := by
+  intro h
+  have hx : deriv dawson x = 0 := h.deriv_eq_zero
+  have : x ≠ 0 := by grind [deriv_dawson_apply]
+  have : deriv (deriv dawson) x < 0 := by
+    rw [deriv_deriv_dawson_apply', hx]
+    grind [dawson_pos]
+  have := deriv_deriv_nonneg_of_isLocalMin (by fun_prop) h
+  grind
+
+lemma exists_isLocalMin_mem_Icc {f : ℝ → ℝ} {x y : ℝ} (h : x < y)
+    (hx : IsLocalMax f x) (hy : IsLocalMax f y) :
+    ∃ z ∈ Set.Icc x y, IsLocalMin f z := by
+  sorry
+
+lemma unique_isLocalMax {x y : ℝ} (hx0 : 0 < x) (hy0 : 0 < y)
+    (hx : IsLocalMax dawson x) (hy : IsLocalMax dawson y) :
+    x = y := by
+  wlog hxy : x < y generalizing x y
+  · grind
+  obtain ⟨z, hz, hz'⟩ :=
+    isCompact_Icc.exists_isMinOn (Set.nonempty_Icc.2 hxy.le) continuous_dawson.continuousOn
+  obtain rfl | rfl : z = x ∨ z = y := by
+    simp only [Set.mem_Icc] at hz
+    by_contra! h_contra
+    exact not_dawson_isLocalMin (by order) (hz'.isLocalMin (Icc_mem_nhds (by order) (by order)))
+  · rw [isMinOn_iff] at hz'
+    have h1 := dawson_eq_of_deriv_dawson_eq_zero hx0 hx.deriv_eq_zero
+    have h2 := dawson_eq_of_deriv_dawson_eq_zero hy0 hy.deriv_eq_zero
+    have : (2 * y)⁻¹ < (2 * z)⁻¹ := by gcongr
+    grind
+  · sorry
 
 @[blueprint
   "fks2-remark-after-corollary-11"
