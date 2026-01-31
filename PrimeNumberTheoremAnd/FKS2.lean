@@ -343,7 +343,7 @@ lemma exists_isLocalMin_mem_Ioo {α β : Type*} [TopologicalSpace α] [Topologic
     have := hz'.isLocalMin (Icc_mem_nhds (by order) (by order))
     grind
 
-/-- There is -/
+/-- There is at most one local maximum of the Dawson function. -/
 lemma unique_isLocalMax {x y : ℝ} (hx : IsLocalMax dawson x) (hy : IsLocalMax dawson y) :
     x = y := by
   have hx0 := pos_of_isLocalMax hx
@@ -400,11 +400,46 @@ lemma dawson_injective_of_nonneg {x y z : ℝ} (h : IsLocalMax dawson x) (hx : x
   grind
 
 lemma exists_isLocalMax_of_sign_change {y z : ℝ} (hy0 : 0 ≤ y) (hyz : y < z)
-    (hy : 0 < deriv dawson y) (hz : deriv dawson z < 0) :
+    (hy : 0 ≤ deriv dawson y) (hz : deriv dawson z ≤ 0) :
     ∃ x ∈ Set.Icc y z, IsLocalMax dawson x := by
   obtain ⟨x, hx, hx'⟩ : 0 ∈ deriv dawson '' Set.Icc y z :=
-    isPreconnected_Icc.intermediate_value (by grind) (by grind) (by fun_prop) ⟨hz.le, hy.le⟩
+    intermediate_value_Icc' hyz.le (by fun_prop) ⟨hz, hy⟩
   exact ⟨x, hx, dawson_isLocalExtr_isLocalMax (by grind) hx'⟩
+
+lemma strictAntiOn_of_isLocalMax {x y : ℝ} (hx : IsLocalMax dawson x) (hxy : x < y)
+    (hy : deriv dawson y < 0) :
+    StrictAntiOn dawson (Set.Ici x) := by
+  have := pos_of_isLocalMax hx
+  have : ∀ y ∈ Set.Ioi x, deriv dawson y < 0 := by
+    intro z hz
+    by_contra! h
+    obtain ⟨t, ht, ht'⟩ : 0 ∈ deriv dawson '' Set.uIcc y z :=
+      intermediate_value_uIcc (by fun_prop) (by grind [Set.uIcc_of_le])
+    have : Set.uIcc y z ⊆ Set.Ioi x := by grind [Set.mem_uIcc]
+    have := dawson_isLocalExtr_isLocalMax (by grind) ht'
+    have := unique_isLocalMax hx this
+    grind
+  apply strictAntiOn_of_deriv_neg (convex_Ici _) (by fun_prop)
+  simp only [Set.nonempty_Iio, interior_Ici', Set.mem_Ioi]
+  intro y hy
+  grind
+
+lemma strictMonoOn_of_isLocalMax {x y : ℝ} (hx : IsLocalMax dawson x) (hy0 : 0 ≤ y) (hxy : y < x)
+    (hy : 0 < deriv dawson y) :
+    StrictMonoOn dawson (Set.Icc 0 x) := by
+  have := pos_of_isLocalMax hx
+  have : ∀ y ∈ Set.Ico 0 x, 0 < deriv dawson y := by
+    intro z hz
+    by_contra! h
+    obtain ⟨t, ht, ht'⟩ : 0 ∈ deriv dawson '' Set.uIcc z y :=
+      intermediate_value_uIcc (by fun_prop) (by grind [Set.uIcc_of_le])
+    have : Set.uIcc z y ⊆ Set.Ico 0 x := by grind [Set.mem_uIcc]
+    have := dawson_isLocalExtr_isLocalMax (by grind) ht'
+    have := unique_isLocalMax hx this
+    grind
+  apply strictMonoOn_of_deriv_pos (convex_Icc _ _) (by fun_prop)
+  simp only [interior_Icc, Set.mem_Ioo, and_imp]
+  grind
 
 @[blueprint
   "fks2-remark-after-corollary-11"
@@ -417,8 +452,6 @@ lemma exists_isLocalMax_of_sign_change {y z : ℝ} (hy0 : 0 ≤ y) (hyz : y < z)
 theorem remark_after_corollary_11 :
     ∃ x₀ : ℝ, x₀ ∈ Set.Icc 0.924 0.925 ∧ (∀ x, dawson x ≤ dawson x₀) ∧
       StrictAntiOn dawson (Set.Ioi x₀) := sorry
-
-#exit
 
 @[blueprint
   "fks2-lemma-12"
