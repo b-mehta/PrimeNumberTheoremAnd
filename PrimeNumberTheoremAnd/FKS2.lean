@@ -173,9 +173,13 @@ lemma hasDerivAt_dawson {x : ℝ} : HasDerivAt dawson (1 - 2 * x * dawson x) x :
 lemma differentiable_dawson : Differentiable ℝ dawson := fun _ ↦ hasDerivAt_dawson.differentiableAt
 @[fun_prop]
 lemma continuous_dawson : Continuous dawson := differentiable_dawson.continuous
+
 lemma deriv_dawson_apply {x : ℝ} : deriv dawson x = 1 - 2 * x * dawson x := hasDerivAt_dawson.deriv
 lemma deriv_dawson :
   deriv dawson = fun x ↦ 1 - 2 * x * dawson x := funext @deriv_dawson_apply
+
+@[fun_prop] lemma continuous_deriv_dawson : Continuous (deriv dawson) := by
+  rw [deriv_dawson]; fun_prop
 
 lemma deriv_deriv_dawson_apply' {x : ℝ} :
     deriv (deriv dawson) x = - 2 * dawson x - 2 * x * deriv dawson x := by
@@ -187,6 +191,12 @@ lemma deriv_deriv_dawson_apply {x : ℝ} :
   rw [deriv_deriv_dawson_apply']
   simp [deriv_dawson]
 
+lemma dawson_eq_of_deriv_dawson_eq_zero {x : ℝ} (hx : 0 < x) (h : deriv dawson x = 0) :
+    dawson x = (2 * x)⁻¹ := by
+  simp only [deriv_dawson] at h
+  field_simp
+  linear_combination -h
+
 /--
 Any non-negative local extremum of the dawson function is a local maximum.
 -/
@@ -196,12 +206,6 @@ lemma dawson_isLocalExtr_isLocalMax {x : ℝ} (hx : 0 ≤ x) (hx : deriv dawson 
   rw [deriv_deriv_dawson_apply', hx]
   have : x ≠ 0 := by grind [deriv_dawson_apply]
   grind [dawson_pos]
-
-lemma dawson_eq_of_deriv_dawson_eq_zero {x : ℝ} (hx : 0 < x) (h : deriv dawson x = 0) :
-    dawson x = (2 * x)⁻¹ := by
-  simp only [deriv_dawson] at h
-  field_simp
-  linear_combination -h
 
 lemma eventuallyEq_of_isMinFilter_of_isMaxFilter {α β : Type*} [PartialOrder β]
     {l : Filter α} {f : α → β} {x : α}
@@ -219,6 +223,7 @@ lemma deriv_deriv_nonneg_of_isLocalMin {f : ℝ → ℝ} {x₀ : ℝ}
   grind
 
 open Topology in
+/-- The Dawson function has no nonnegative local minima. -/
 lemma not_dawson_isLocalMin {x : ℝ} (hx : 0 ≤ x) : ¬ IsLocalMin dawson x := by
   intro h
   have hx : deriv dawson x = 0 := h.deriv_eq_zero
@@ -229,6 +234,7 @@ lemma not_dawson_isLocalMin {x : ℝ} (hx : 0 ≤ x) : ¬ IsLocalMin dawson x :=
   have := deriv_deriv_nonneg_of_isLocalMin (by fun_prop) h
   grind
 
+/-- Any local maximum of the Dawson function is positive. -/
 lemma pos_of_isLocalMax {x : ℝ} (hx : IsLocalMax dawson x) : 0 < x := by
   by_contra!
   apply not_dawson_isLocalMin (x := -x) (by grind)
@@ -239,6 +245,10 @@ lemma pos_of_isLocalMax {x : ℝ} (hx : IsLocalMax dawson x) : 0 < x := by
   simp [dawson_neg]
 
 open Topology in
+/--
+The Dawson function is nowhere locally constant.
+That is, it is not constant on any nonempty open set.
+-/
 lemma not_dawson_eventuallyEq_nhds_const {x c : ℝ} : ¬ dawson =ᶠ[𝓝 x] (fun _ ↦ c) := by
   intro h
   wlog hx : 0 ≤ x
@@ -262,6 +272,10 @@ variable {α β : Type*} [TopologicalSpace α] [LinearOrder α] [PartialOrder β
 
 open Topology
 
+/--
+If `f` has a local maximum at `x` and attains a minimum on `[x, y]` at `x`,
+then `f` is eventually constant equal to `f x` in the right neighborhood of `x`.
+-/
 lemma eventuallyEq_const_of_isLocalMax_of_isMinOn_left [ClosedIciTopology α]
     {f : α → β} {x y : α} (hxy : x < y)
     (hx : IsLocalMax f x) (hz' : IsMinOn f (Set.Icc x y) x) :
@@ -274,6 +288,10 @@ lemma eventuallyEq_const_of_isLocalMax_of_isMinOn_left [ClosedIciTopology α]
     filter_upwards [eventually_mem_nhdsWithin] using by grind [isMinOn_iff]
   exact eventuallyEq_of_isMinFilter_of_isMaxFilter h₁ h₂
 
+/--
+If `f` has a local maximum at `y` and attains a minimum on `[x, y]` at `y`,
+then `f` is eventually constant equal to `f y` in the left neighborhood of `y`.
+-/
 lemma eventuallyEq_const_of_isLocalMax_of_isMinOn_right [ClosedIicTopology α]
     {f : α → β} {x y : α} (hxy : x < y)
     (hx : IsLocalMax f y) (hz' : IsMinOn f (Set.Icc x y) y) :
@@ -284,6 +302,10 @@ lemma eventuallyEq_const_of_isLocalMax_of_isMinOn_right [ClosedIicTopology α]
 end
 
 open Topology in
+/--
+Given a function `f` continuous on `[x, y]` with local maxima at `x` and `y`, there exists
+a point `z` in `(x, y)` which is a local minimum of `f`.
+-/
 lemma exists_isLocalMin_mem_Ioo {α β : Type*} [TopologicalSpace α] [TopologicalSpace β]
     [LinearOrder α] [DenselyOrdered α] [LinearOrder β] [CompactIccSpace α] [OrderTopology α]
     [OrderClosedTopology β]
@@ -321,15 +343,18 @@ lemma exists_isLocalMin_mem_Ioo {α β : Type*} [TopologicalSpace α] [Topologic
     have := hz'.isLocalMin (Icc_mem_nhds (by order) (by order))
     grind
 
-lemma unique_isLocalMax {x y : ℝ} (hx0 : 0 < x) (hy0 : 0 < y)
-    (hx : IsLocalMax dawson x) (hy : IsLocalMax dawson y) :
+/-- There is -/
+lemma unique_isLocalMax {x y : ℝ} (hx : IsLocalMax dawson x) (hy : IsLocalMax dawson y) :
     x = y := by
+  have hx0 := pos_of_isLocalMax hx
+  have hy0 := pos_of_isLocalMax hy
   wlog hxy : x < y generalizing x y
   · grind
   obtain ⟨z, hz', hz⟩ := exists_isLocalMin_mem_Ioo hxy continuous_dawson.continuousOn hx hy
   cases not_dawson_isLocalMin (by grind) hz
 
 open Topology in
+/-- Any local maximum of the Dawson function is a global maximum. -/
 lemma isMax_dawson {x : ℝ} (h : IsLocalMax dawson x) : ∀ y, dawson y ≤ dawson x := by
   have hx₀ : 0 < x := pos_of_isLocalMax h
   intro y
@@ -361,16 +386,25 @@ lemma isMax_dawson {x : ℝ} (h : IsLocalMax dawson x) : ∀ y, dawson y ≤ daw
         (this.filter_mono (nhdsWithin_mono _ (Set.Iio_subset_Iic_self)))
     exact not_dawson_isLocalMin (by grind) (hz'.isLocalMin (by simp; grind))
 
-lemma dawson_injective {x y z : ℝ} (h : IsLocalMax dawson x) (hx : x ∉ Set.Icc y z)
+/--
+Given `0 ≤ y < z` with `x` not between `y,z`, then `dawson y ≠ dawson z`.
+-/
+lemma dawson_injective_of_nonneg {x y z : ℝ} (h : IsLocalMax dawson x) (hx : x ∉ Set.Icc y z)
     (hy₀ : 0 ≤ y)
     (hyz : y < z) :
     dawson y ≠ dawson z := by
   intro hyz'
-  have hx₀ : 0 < x := pos_of_isLocalMax h
   obtain ⟨c, hc', hc⟩ := exists_deriv_eq_zero hyz continuous_dawson.continuousOn hyz'
-  simp only [Set.mem_Ioo] at hc'
   have := dawson_isLocalExtr_isLocalMax (by grind) hc
-  sorry
+  have := unique_isLocalMax h this
+  grind
+
+lemma exists_isLocalMax_of_sign_change {y z : ℝ} (hy0 : 0 ≤ y) (hyz : y < z)
+    (hy : 0 < deriv dawson y) (hz : deriv dawson z < 0) :
+    ∃ x ∈ Set.Icc y z, IsLocalMax dawson x := by
+  obtain ⟨x, hx, hx'⟩ : 0 ∈ deriv dawson '' Set.Icc y z :=
+    isPreconnected_Icc.intermediate_value (by grind) (by grind) (by fun_prop) ⟨hz.le, hy.le⟩
+  exact ⟨x, hx, dawson_isLocalExtr_isLocalMax (by grind) hx'⟩
 
 @[blueprint
   "fks2-remark-after-corollary-11"
