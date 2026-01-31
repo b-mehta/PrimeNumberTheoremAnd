@@ -154,6 +154,10 @@ lemma dawson_neg {x : ℝ} : dawson (-x) = - dawson x := by
   simp only [Set.mem_Icc, exp_pos, and_true]
   exact ⟨0, by simp [hx.le]⟩
 
+@[simp] lemma dawson_nonpos {x : ℝ} (hx : x ≤ 0) : dawson x ≤ 0 := by
+  have := dawson_nonneg (x := -x)
+  grind [dawson_neg]
+
 lemma hasDerivAt_dawson {x : ℝ} : HasDerivAt dawson (1 - 2 * x * dawson x) x := by
   have hf₁ : MeasureTheory.StronglyMeasurable (fun x ↦ exp (x ^ 2)) := by measurability
   have hf₂ : Continuous (fun x ↦ exp (x ^ 2)) := by fun_prop
@@ -186,9 +190,8 @@ lemma deriv_deriv_dawson_apply {x : ℝ} :
 /--
 Any non-negative local extremum of the dawson function is a local maximum.
 -/
-lemma dawson_isLocalExtr_isLocalMax {x : ℝ} (hx : 0 ≤ x) (h : IsLocalExtr dawson x) :
+lemma dawson_isLocalExtr_isLocalMax {x : ℝ} (hx : 0 ≤ x) (hx : deriv dawson x = 0) :
     IsLocalMax dawson x := by
-  have hx : deriv dawson x = 0 := h.deriv_eq_zero
   apply isLocalMax_of_deriv_deriv_neg _ hx (by fun_prop)
   rw [deriv_deriv_dawson_apply', hx]
   have : x ≠ 0 := by grind [deriv_dawson_apply]
@@ -226,28 +229,148 @@ lemma not_dawson_isLocalMin {x : ℝ} (hx : 0 ≤ x) : ¬ IsLocalMin dawson x :=
   have := deriv_deriv_nonneg_of_isLocalMin (by fun_prop) h
   grind
 
-lemma exists_isLocalMin_mem_Icc {f : ℝ → ℝ} {x y : ℝ} (h : x < y)
+lemma pos_of_isLocalMax {x : ℝ} (hx : IsLocalMax dawson x) : 0 < x := by
+  by_contra!
+  apply not_dawson_isLocalMin (x := -x) (by grind)
+  have := hx.neg
+  rw [← neg_neg (a := x)] at this
+  convert this.comp_continuous continuousAt_neg
+  ext x
+  simp [dawson_neg]
+
+open Topology in
+lemma not_dawson_eventuallyEq_nhds_const {x c : ℝ} : ¬ dawson =ᶠ[𝓝 x] (fun _ ↦ c) := by
+  intro h
+  wlog hx : 0 ≤ x
+  · refine @this (-x) (-c) ?_ (by grind)
+    rw [nhds_neg, ← Filter.map_neg, Filter.eventuallyEq_map]
+    filter_upwards [h] with y hy using by grind [dawson_neg]
+  exact not_dawson_isLocalMin hx (isLocalMin_const.congr (.symm h))
+
+open Topology in
+lemma not_dawson_eventuallyEq_nhdsWithin_const {x c : ℝ} {s : Set ℝ} (hxs : x ∈ closure s)
+    (hs : IsOpen s) : ¬ dawson =ᶠ[𝓝[s] x] (fun _ ↦ c) := by
+  rw [Filter.EventuallyEq, ← eventually_nhdsWithin_eventually_nhds_iff_of_isOpen hs]
+  have : (𝓝[s] x).NeBot := by rwa [← mem_closure_iff_nhdsWithin_neBot]
+  intro h
+  obtain ⟨x, hx⟩ := h.exists
+  exact not_dawson_eventuallyEq_nhds_const hx
+
+section
+
+variable {α β : Type*} [TopologicalSpace α] [LinearOrder α] [PartialOrder β]
+
+open Topology
+
+lemma eventuallyEq_const_of_isLocalMax_of_isMinOn_left [ClosedIciTopology α]
+    {f : α → β} {x y : α} (hxy : x < y)
+    (hx : IsLocalMax f x) (hz' : IsMinOn f (Set.Icc x y) x) :
+    f =ᶠ[𝓝[≥] x] fun _ ↦ f x := by
+  have h₂ : IsMaxFilter f (𝓝[≥] x) x := by
+    rw [IsMaxFilter, eventually_nhdsWithin_iff]
+    filter_upwards [hx] using by grind
+  have h₁ : IsMinFilter f (𝓝[≥] x) x := by
+    rw [← nhdsWithin_Icc_eq_nhdsGE hxy]
+    filter_upwards [eventually_mem_nhdsWithin] using by grind [isMinOn_iff]
+  exact eventuallyEq_of_isMinFilter_of_isMaxFilter h₁ h₂
+
+lemma eventuallyEq_const_of_isLocalMax_of_isMinOn_right [ClosedIicTopology α]
+    {f : α → β} {x y : α} (hxy : x < y)
+    (hx : IsLocalMax f y) (hz' : IsMinOn f (Set.Icc x y) y) :
+    f =ᶠ[𝓝[≤] y] fun _ ↦ f y :=
+  eventuallyEq_const_of_isLocalMax_of_isMinOn_left (α := αᵒᵈ) (x := .toDual y) (y := .toDual x)
+    hxy hx (by simpa using hz')
+
+end
+
+open Topology in
+lemma exists_isLocalMin_mem_Ioo {α β : Type*} [TopologicalSpace α] [TopologicalSpace β]
+    [LinearOrder α] [DenselyOrdered α] [LinearOrder β] [CompactIccSpace α] [OrderTopology α]
+    [OrderClosedTopology β]
+    {f : α → β} {x y : α} (hxy : x < y)
+    (hf : ContinuousOn f (Set.Icc x y))
     (hx : IsLocalMax f x) (hy : IsLocalMax f y) :
-    ∃ z ∈ Set.Icc x y, IsLocalMin f z := by
-  sorry
+    ∃ z ∈ Set.Ioo x y, IsLocalMin f z := by
+  obtain ⟨z, hz, hz'⟩ :=
+    isCompact_Icc.exists_isMinOn (Set.nonempty_Icc.2 hxy.le) hf
+  by_cases! h : x = z ∨ y = z
+  · obtain ⟨c, t, ht, h⟩ : ∃ c, ∃ t ∈ Set.Ioo x y, f =ᶠ[𝓝 t] (fun _ ↦ c) := by
+      by_contra!
+      obtain rfl | rfl := h
+      · have h := (eventuallyEq_const_of_isLocalMax_of_isMinOn_left hxy hx hz').filter_mono
+          (nhdsWithin_mono _ (Set.Ioi_subset_Ici_self))
+        rw [Filter.EventuallyEq,
+          ← eventually_nhdsWithin_eventually_nhds_iff_of_isOpen isOpen_Ioi] at h
+        have : ∀ᶠ z : α in 𝓝[>] x, False := by
+          filter_upwards [h, Ioo_mem_nhdsGT hxy] with z hz hz'
+          exact this _ z hz' hz
+        rw [Filter.eventually_false_iff_eq_bot] at this
+        exact (nhdsGT_neBot_of_exists_gt ⟨y, hxy⟩).ne this
+      · have h := (eventuallyEq_const_of_isLocalMax_of_isMinOn_right hxy hy hz').filter_mono
+          (nhdsWithin_mono _ (Set.Iio_subset_Iic_self))
+        rw [Filter.EventuallyEq,
+          ← eventually_nhdsWithin_eventually_nhds_iff_of_isOpen isOpen_Iio] at h
+        have : ∀ᶠ z : α in 𝓝[<] y, False := by
+          filter_upwards [h, Ioo_mem_nhdsLT hxy] with z hz hz'
+          exact this _ z hz' hz
+        rw [Filter.eventually_false_iff_eq_bot] at this
+        exact (nhdsGT_neBot_of_exists_gt (α := αᵒᵈ) ⟨x, hxy⟩).ne this
+    exact ⟨_, ht, isLocalMin_const.congr (.symm h)⟩
+  · simp only [Set.mem_Icc] at hz
+    by_contra! h_contra
+    have := hz'.isLocalMin (Icc_mem_nhds (by order) (by order))
+    grind
 
 lemma unique_isLocalMax {x y : ℝ} (hx0 : 0 < x) (hy0 : 0 < y)
     (hx : IsLocalMax dawson x) (hy : IsLocalMax dawson y) :
     x = y := by
   wlog hxy : x < y generalizing x y
   · grind
-  obtain ⟨z, hz, hz'⟩ :=
-    isCompact_Icc.exists_isMinOn (Set.nonempty_Icc.2 hxy.le) continuous_dawson.continuousOn
-  obtain rfl | rfl : z = x ∨ z = y := by
-    simp only [Set.mem_Icc] at hz
-    by_contra! h_contra
-    exact not_dawson_isLocalMin (by order) (hz'.isLocalMin (Icc_mem_nhds (by order) (by order)))
-  · rw [isMinOn_iff] at hz'
-    have h1 := dawson_eq_of_deriv_dawson_eq_zero hx0 hx.deriv_eq_zero
-    have h2 := dawson_eq_of_deriv_dawson_eq_zero hy0 hy.deriv_eq_zero
-    have : (2 * y)⁻¹ < (2 * z)⁻¹ := by gcongr
+  obtain ⟨z, hz', hz⟩ := exists_isLocalMin_mem_Ioo hxy continuous_dawson.continuousOn hx hy
+  cases not_dawson_isLocalMin (by grind) hz
+
+open Topology in
+lemma isMax_dawson {x : ℝ} (h : IsLocalMax dawson x) : ∀ y, dawson y ≤ dawson x := by
+  have hx₀ : 0 < x := pos_of_isLocalMax h
+  intro y
+  obtain hy | hy : y ≤ 0 ∨ 0 ≤ y := le_total _ _
+  · have : dawson y ≤ 0 := dawson_nonpos hy
+    have : 0 < dawson x := dawson_pos hx₀
     grind
-  · sorry
+  by_contra! hc
+  have : x ≠ y := by grind
+  obtain ⟨z, hz, hz'⟩ : ∃ z ∈ Set.uIcc x y, IsMinOn dawson (Set.uIcc x y) z :=
+    isCompact_uIcc.exists_isMinOn Set.nonempty_uIcc continuous_dawson.continuousOn
+  have hyz : y ≠ z := by
+    rintro rfl
+    have := isMinOn_iff.1 hz' x (by simp)
+    grind
+  obtain hxy | hyx : x < y ∨ y < x := by grind
+  · rw [Set.uIcc_of_lt hxy] at hz' hz
+    have : x ≠ z := by
+      rintro rfl
+      have := eventuallyEq_const_of_isLocalMax_of_isMinOn_left hxy h hz'
+      exact not_dawson_eventuallyEq_nhdsWithin_const (by simp) isOpen_Ioi
+        (this.filter_mono (nhdsWithin_mono _ (Set.Ioi_subset_Ici_self)))
+    exact not_dawson_isLocalMin (by grind) (hz'.isLocalMin (by simp; grind))
+  · rw [Set.uIcc_of_gt hyx] at hz' hz
+    have : x ≠ z := by
+      rintro rfl
+      have := eventuallyEq_const_of_isLocalMax_of_isMinOn_right hyx h hz'
+      exact not_dawson_eventuallyEq_nhdsWithin_const (by simp) isOpen_Iio
+        (this.filter_mono (nhdsWithin_mono _ (Set.Iio_subset_Iic_self)))
+    exact not_dawson_isLocalMin (by grind) (hz'.isLocalMin (by simp; grind))
+
+lemma dawson_injective {x y z : ℝ} (h : IsLocalMax dawson x) (hx : x ∉ Set.Icc y z)
+    (hy₀ : 0 ≤ y)
+    (hyz : y < z) :
+    dawson y ≠ dawson z := by
+  intro hyz'
+  have hx₀ : 0 < x := pos_of_isLocalMax h
+  obtain ⟨c, hc', hc⟩ := exists_deriv_eq_zero hyz continuous_dawson.continuousOn hyz'
+  simp only [Set.mem_Ioo] at hc'
+  have := dawson_isLocalExtr_isLocalMax (by grind) hc
+  sorry
 
 @[blueprint
   "fks2-remark-after-corollary-11"
@@ -260,6 +383,8 @@ lemma unique_isLocalMax {x y : ℝ} (hx0 : 0 < x) (hy0 : 0 < y)
 theorem remark_after_corollary_11 :
     ∃ x₀ : ℝ, x₀ ∈ Set.Icc 0.924 0.925 ∧ (∀ x, dawson x ≤ dawson x₀) ∧
       StrictAntiOn dawson (Set.Ioi x₀) := sorry
+
+#exit
 
 @[blueprint
   "fks2-lemma-12"
